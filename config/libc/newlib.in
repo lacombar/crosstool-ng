@@ -1,0 +1,53 @@
+# options for newlib
+# depends on EXPERIMENTAL
+
+config LIBC_newlib
+    help
+      A really small C library, primarly used for bare-metal.
+      Also serves as C library for Cygwin.
+
+choice
+    bool
+    prompt "newlib version"
+
+config LIBC_V_1_14_0
+    bool
+    prompt "1.14.0"
+
+config LIBC_V_1_15_0
+    bool
+    prompt "1.15.0"
+
+config LIBC_V_1_16_0
+    bool
+    prompt "1.16.0"
+
+config LIBC_V_1_17_0
+    bool
+    prompt "1.17.0"
+
+# CT_INSERT_VERSION_ABOVE
+# Don't remove above line!
+
+config LIBC_NEWLIB_CVS
+    bool
+    prompt "CVS snapshot"
+
+if LIBC_NEWLIB_CVS
+config LIBC_NEWLIB_CVS_DATE
+    string
+    prompt "checkout as of date"
+    help
+      The date, in ISO-8601 format, at which to check out the repository.
+endif # LIBC_NEWLIB_CVS
+
+endchoice
+
+config LIBC_VERSION
+    string
+    default "1.14.0" if LIBC_V_1_14_0
+    default "1.15.0" if LIBC_V_1_15_0
+    default "1.16.0" if LIBC_V_1_16_0
+    default "1.17.0" if LIBC_V_1_17_0
+# CT_INSERT_VERSION_STRING_ABOVE
+# Don't remove above line!
