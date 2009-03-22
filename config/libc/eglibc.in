@@ -1,5 +1,5 @@
-# EXPERIMENTAL
 # eglibc options
+# EXPERIMENTAL
 
 config LIBC_eglibc
     select LIBC_SUPPORT_NPTL
