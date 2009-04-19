@@ -317,7 +317,7 @@ CT_DoSetProxy() {
             # Find all interfaces and build locally accessible networks
             server_ip=$(ping -c 1 -W 2 "${CT_PROXY_HOST}" |head -n 1 |sed -r -e 's/^[^\(]+\(([^\)]+)\).*$/\1/;' || true)
             CT_TestOrAbort "SOCKS proxy '${CT_PROXY_HOST}' has no IP." -n "${server_ip}"
-            /sbin/ifconfig |gawk -v server_ip="${server_ip}" '
+            /sbin/ifconfig |"${awk}" -v server_ip="${server_ip}" '
                 BEGIN {
                     split( server_ip, tmp, "\\." );
                     server_ip_num = tmp[1] * 2^24 + tmp[2] * 2^16 + tmp[3] * 2^8 + tmp[4] * 2^0;
@@ -642,9 +642,9 @@ CT_Extract() {
     # Some tarballs have read-only files... :-(
     # Because of nochdir, we don't know where we are, so chmod all
     # the src tree
-    chmod -R u+w "${CT_SRC_DIR}"
+    CT_DoExecLog DEBUG chmod -R u+w "${CT_SRC_DIR}"
 
-    touch "${CT_SRC_DIR}/.${basename}.extracted"
+    CT_DoExecLog DEBUG touch "${CT_SRC_DIR}/.${basename}.extracted"
 
     [ "${nochdir}" = "nochdir" ] || CT_Popd
 }
@@ -664,6 +664,17 @@ CT_Patch() {
         CT_DoLog DEBUG "Already patched '${basename}'"
         return 0
     fi
+
+    # Check if already partially patched
+    if [ -e "${CT_SRC_DIR}/.${basename}.patching" ]; then
+        CT_DoLog ERROR "The '${basename}' sources were partially patched."
+        CT_DoLog ERROR "Please remove first:"
+        CT_DoLog ERROR " - the source dir for '${basename}', in '${CT_SRC_DIR}'"
+        CT_DoLog ERROR " - the file '${CT_SRC_DIR}/.${basename}.extracted'"
+        CT_DoLog ERROR " - the file '${CT_SRC_DIR}/.${basename}.patching'"
+        CT_Abort "I'll stop now to avoid any carnage..."
+    fi
+    touch "${CT_SRC_DIR}/.${basename}.patching"
 
     [ "${nochdir}" = "nochdir" ] || CT_Pushd "${CT_SRC_DIR}/${basename}"
 
@@ -695,7 +706,8 @@ CT_Patch() {
         done
     fi
 
-    touch "${CT_SRC_DIR}/.${basename}.patched"
+    CT_DoExecLog DEBUG rm -f "${CT_SRC_DIR}/.${basename}.patching"
+    CT_DoExecLog DEBUG touch "${CT_SRC_DIR}/.${basename}.patched"
 
     [ "${nochdir}" = "nochdir" ] || CT_Popd
 }
@@ -818,7 +830,8 @@ CT_DoSaveState() {
     local state_name="$1"
     local state_dir="${CT_STATE_DIR}/${state_name}"
 
-    CT_DoLog DEBUG "Saving state to restart at step '${state_name}'..."
+    # Log this to the log level required by the user
+    CT_DoLog ${CT_LOG_LEVEL_MAX} "Saving state to restart at step '${state_name}'..."
 
     rm -rf "${state_dir}"
     mkdir -p "${state_dir}"
@@ -832,7 +845,7 @@ CT_DoSaveState() {
     # We must omit shell functions, and some specific bash variables
     # that break when restoring the environment, later. We could do
     # all the processing in the gawk script, but a sed is easier...
-    set |gawk '
+    set |"${awk}" '
               BEGIN { _p = 1; }
               $0~/^[^ ]+ \(\)/ { _p = 0; }
               _p == 1
@@ -840,6 +853,11 @@ CT_DoSaveState() {
               ' |sed -r -e '/^BASH_(ARGC|ARGV|LINENO|SOURCE|VERSINFO)=/d;
                            /^(UID|EUID)=/d;
                            /^(FUNCNAME|GROUPS|PPID|SHELLOPTS)=/d;' >"${state_dir}/env.sh"
+
+    CT_DoLog DEBUG "  Saving CT_CONFIG_DIR='${CT_CONFIG_DIR}'"
+    CT_Pushd "${CT_CONFIG_DIR}"
+    CT_DoExecLog DEBUG tar cv${tar_opt}f "${state_dir}/config_dir.tar${tar_ext}" .
+    CT_Popd
 
     CT_DoLog DEBUG "  Saving CT_CC_CORE_STATIC_PREFIX_DIR='${CT_CC_CORE_STATIC_PREFIX_DIR}'"
     CT_Pushd "${CT_CC_CORE_STATIC_PREFIX_DIR}"
@@ -881,7 +899,9 @@ CT_DoLoadState(){
     if [ "${CT_LOG_TO_FILE}" = "y" ]; then
         exec >"${state_dir}/tail.log"
     fi
-    CT_DoLog INFO "Restoring state at step '${state_name}', as requested."
+
+    # Log this to the log level required by the user
+    CT_DoLog ${CT_LOG_LEVEL_MAX} "Restoring state at step '${state_name}', as requested."
 
     case "${CT_DEBUG_CT_SAVE_STEPS_GZIP}" in
         y)  tar_opt=z; tar_ext=.gz;;
@@ -889,9 +909,8 @@ CT_DoLoadState(){
     esac
 
     CT_DoLog DEBUG "  Removing previous build directories"
-    chmod -R u+rwX "${CT_PREFIX_DIR}" "${CT_CC_CORE_SHARED_PREFIX_DIR}" "${CT_CC_CORE_STATIC_PREFIX_DIR}"
-    rm -rf         "${CT_PREFIX_DIR}" "${CT_CC_CORE_SHARED_PREFIX_DIR}" "${CT_CC_CORE_STATIC_PREFIX_DIR}"
-    mkdir -p       "${CT_PREFIX_DIR}" "${CT_CC_CORE_SHARED_PREFIX_DIR}" "${CT_CC_CORE_STATIC_PREFIX_DIR}"
+    CT_DoForceRmdir             "${CT_PREFIX_DIR}" "${CT_CC_CORE_SHARED_PREFIX_DIR}" "${CT_CC_CORE_STATIC_PREFIX_DIR}" "${CT_CONFIG_DIR}"
+    CT_DoExecLog DEBUG mkdir -p "${CT_PREFIX_DIR}" "${CT_CC_CORE_SHARED_PREFIX_DIR}" "${CT_CC_CORE_STATIC_PREFIX_DIR}" "${CT_CONFIG_DIR}"
 
     CT_DoLog DEBUG "  Restoring CT_PREFIX_DIR='${CT_PREFIX_DIR}'"
     CT_Pushd "${CT_PREFIX_DIR}"
@@ -906,6 +925,11 @@ CT_DoLoadState(){
     CT_DoLog DEBUG "  Restoring CT_CC_CORE_STATIC_PREFIX_DIR='${CT_CC_CORE_STATIC_PREFIX_DIR}'"
     CT_Pushd "${CT_CC_CORE_STATIC_PREFIX_DIR}"
     CT_DoExecLog DEBUG tar xv${tar_opt}f "${state_dir}/cc_core_static_prefix_dir.tar${tar_ext}"
+    CT_Popd
+
+    CT_DoLog DEBUG "  Restoring CT_CONFIG_DIR='${CT_CONFIG_DIR}'"
+    CT_Pushd "${CT_CONFIG_DIR}"
+    CT_DoExecLog DEBUG tar xv${tar_opt}f "${state_dir}/config_dir.tar${tar_ext}"
     CT_Popd
 
     # Restore the environment, discarding any error message

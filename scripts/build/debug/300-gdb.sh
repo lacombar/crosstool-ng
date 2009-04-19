@@ -135,20 +135,55 @@ do_debug_gdb_build() {
         CT_DoStep INFO "Installing native gdb"
 
         CT_DoStep INFO "Installing ncurses library"
-        CT_DoLog EXTRA "Configuring ncurses"
-        mkdir -p "${CT_BUILD_DIR}/build-ncurses"
-        cd "${CT_BUILD_DIR}/build-ncurses"
 
         ncurses_opts=
         [ "${CT_CC_LANG_CXX}" = "y" ] || ncurses_opts="${ncurses_opts} --without-cxx --without-cxx-binding"
         [ "${CT_CC_LANG_ADA}" = "y" ] || ncurses_opts="${ncurses_opts} --without-ada"
 
+        CT_DoStep INFO "Installing native ncurses tic"
+        CT_DoLog EXTRA "Configuring ncurses tic"
+        mkdir -p "${CT_BUILD_DIR}/build-ncurses-build-tic"
+        cd "${CT_BUILD_DIR}/build-ncurses-build-tic"
+
+        # Use build = CT_REAL_BUILD so that configure thinks it is
+        # cross-compiling, and thus will use the ${CT_BUILD}-*
+        # tools instead of searching for the native ones...
+        CT_DoExecLog ALL                                        \
+        "${CT_SRC_DIR}/ncurses-${CT_NCURSES_VERSION}/configure" \
+            --build=${CT_REAL_BUILD}                            \
+            --host=${CT_BUILD}                                  \
+            --prefix=/usr                                       \
+            --without-shared                                    \
+            --enable-symlinks                                   \
+            --with-build-cc=${CT_REAL_BUILD}-gcc                \
+            --with-build-cpp=${CT_REAL_BUILD}-gcc               \
+            --with-build-cflags="${CT_CFLAGS_FOR_HOST}"         \
+            ${ncurses_opts}
+
+        # Under some operating systems (eg. Winblows), there is an
+        # extension appended to executables. Find that.
+        tic_ext=$(grep -E '^x[[:space:]]*=' progs/Makefile |sed -r -e 's/^.*=[[:space:]]*//;')
+
+        CT_DoLog EXTRA "Building ncurses tic"
+        CT_DoExecLog ALL make ${PARALLELMFLAGS} -C include
+        CT_DoExecLog ALL make ${PARALLELMFLAGS} -C progs "tic${tic_ext}"
+
+        CT_DoLog EXTRA "Installing ncurses tic"
+        CT_DoExecLog ALL install -d -m 0755 "${CT_PREFIX_DIR}/bin"
+        CT_DoExecLog ALL install -m 0755 "progs/tic${tic_ext}" "${CT_PREFIX_DIR}/bin"
+
+        CT_EndStep # tic build
+
+        CT_DoLog EXTRA "Configuring ncurses"
+        mkdir -p "${CT_BUILD_DIR}/build-ncurses"
+        cd "${CT_BUILD_DIR}/build-ncurses"
+
         CT_DoExecLog ALL                                        \
         "${CT_SRC_DIR}/ncurses-${CT_NCURSES_VERSION}/configure" \
             --build=${CT_BUILD}                                 \
             --host=${CT_TARGET}                                 \
-            --with-build-cc=${CT_CC}                            \
-            --with-build-cpp=${CT_CC}                           \
+            --with-build-cc=${CT_BUILD}-gcc                     \
+            --with-build-cpp=${CT_BUILD}-gcc                    \
             --with-build-cflags="${CT_CFLAGS_FOR_HOST}"         \
             --prefix=/usr                                       \
             --with-shared                                       \
@@ -164,7 +199,10 @@ do_debug_gdb_build() {
         mkdir -p "${CT_SYSROOT_DIR}/usr/bin"
         CT_DoExecLog ALL make DESTDIR="${CT_SYSROOT_DIR}" install
 
-        CT_EndStep
+        # We no longer need the temporary tic. Remove it
+        CT_DoExecLog DEBUG rm -fv "${CT_PREFIX_DIR}/bin/tic"
+
+        CT_EndStep # ncurses build
 
         CT_DoLog EXTRA "Configuring native gdb"
 
@@ -222,7 +260,7 @@ do_debug_gdb_build() {
 
         unset ac_cv_func_strncmp_works
 
-        CT_EndStep
+        CT_EndStep # native gdb build
     fi
 
     if [ "${CT_GDB_GDBSERVER}" = "y" ]; then
