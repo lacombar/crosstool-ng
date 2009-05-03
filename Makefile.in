@@ -51,7 +51,6 @@ install:= @@install@@
 bash   := @@bash@@
 grep   := @@grep@@
 make   := @@make@@
-awk    := @@awk@@
 sed    := @@sed@@
 
 ###############################################################################
@@ -104,6 +103,7 @@ uninstall: real-uninstall
 # Build rules
 
 build-bin: ct-ng scripts/crosstool-NG.sh scripts/saveSample.sh
+	@chmod 755 $^
 
 build-lib: paths.mk
 
@@ -138,7 +138,6 @@ paths.mk:
 	  echo "export bash=$(bash)";       \
 	  echo "export grep=$(grep)";       \
 	  echo "export make=$(make)";       \
-	  echo "export awk=$(awk)";         \
 	  echo "export sed=$(sed)";         \
 	 ) >paths.mk
 
@@ -168,15 +167,10 @@ clean-man:
 #--------------------------------------
 # Check for --local setup
 
-ifeq ($(strip $(LOCAL)),1)
+ifeq ($(strip $(LOCAL)),y)
 
 real-install:
-	@echo "  CHMOD  'ct-ng'"
-	@chmod a+x ct-ng
-	@echo "  CHMOD  'scripts/crosstool-NG.sh'"
-	@chmod a+x scripts/crosstool-NG.sh
-	@echo "  CHMOD  'scripts/saveSample.sh'"
-	@chmod a+x scripts/saveSample.sh
+	@true
 
 real-uninstall:
 	@true
