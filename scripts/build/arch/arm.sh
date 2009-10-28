@@ -8,10 +8,20 @@ CT_DoArchTupleValues() {
     case "${CT_LIBC},${CT_ARCH_ARM_EABI}" in
         *glibc,y)   CT_TARGET_SYS=gnueabi;;
         uClibc,y)   CT_TARGET_SYS=uclibcgnueabi;;
-        none,y)     CT_TARGET_SYS=eabi;;
+        *,y)        CT_TARGET_SYS=eabi;;
     esac
 
-    # In case we're EABI, do *not* specify any ABI!
-    # which means, either we do not have an ABI specified, or we're not EABI.
-    CT_TestOrAbort "Internal error: CT_ARCH_ABI should not be set for EABI build." -z "${CT_ARCH_ABI}" -o -z "${CT_ARCH_ARM_EABI}"
+    # Set the default instrcution set mode
+    case "${CT_ARCH_ARM_MODE}" in
+        arm)    ;;
+        thumb)
+            CT_ARCH_CC_CORE_EXTRA_CONFIG="--with-mode=thumb"
+            CT_ARCH_CC_EXTRA_CONFIG="--with-mode=thumb"
+#            CT_ARCH_TARGET_CFLAGS="-mthumb"
+            ;;
+    esac
+
+    if [ "${CT_ARCH_ARM_INTERWORKING}" = "y" ]; then
+        CT_ARCH_TARGET_CFLAGS+=" -mthumb-interwork"
+    fi
 }
