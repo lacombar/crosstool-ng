@@ -28,7 +28,7 @@ do_cc_get() {
 # Extract gcc
 do_cc_extract() {
     CT_Extract "gcc-${CT_CC_VERSION}"
-    CT_Patch "gcc-${CT_CC_VERSION}"
+    CT_Patch "gcc" "${CT_CC_VERSION}"
 
     # Copy ecj-latest.jar to ecj.jar at the top of the GCC source tree
     if [ "${CT_CC_LANG_JAVA_USE_ECJ}" = "y"                     \
@@ -131,6 +131,10 @@ do_cc_core() {
             copy_headers=n
             ;;
     esac
+
+    # Bare metal delivers the core compiler as final compiler, so add version info and bugurl
+    [ -n "${CT_CC_BUGURL}" ]     && extra_config+=("--with-bugurl=${CT_CC_BUGURL}")
+    [ -n "${CT_CC_PKGVERSION}" ] && extra_config+=("--with-pkgversion=${CT_CC_PKGVERSION}")
 
     if [ "${copy_headers}" = "y" ]; then
         CT_DoLog DEBUG "Copying headers to install area of bootstrap gcc, so it can build libgcc2"
